@@ -321,6 +321,7 @@ class KeywordStats:
     win_rate: float                  # directional win rate (auto-detected)
     directional_consistency: float   # % of events moving in the dominant direction
     signal_strength: float           # |Mean Return| x Consistency (signed)
+    sharpe_ratio: float              # Mean Return / Std Dev  (risk-adjusted signal)
     direction: str                   # "LONG" or "SHORT"
     t_stat: float
     p_value: float
@@ -505,6 +506,15 @@ class EventAnalyzer:
         sign = 1.0 if direction == "LONG" else -1.0
         signal_strength = sign * abs(mean_ret) * directional_consistency
 
+        # ── Sharpe Ratio (risk-adjusted signal) ──────────────────────
+        # Formula: Mean Return / Std Dev
+        # 赚 1% 但波动很小（稳赚）>> 赚 5% 但时常亏 10%（赌博）
+        # 值越大越好，带符号：正=做多信号，负=做空信号
+        if n > 1 and std_ret > 0:
+            sharpe_ratio = mean_ret / std_ret
+        else:
+            sharpe_ratio = 0.0
+
         # ── One-sample t-test: is the mean return != 0? ─────────────────
         if n > 1 and std_ret > 0:
             t_stat, p_val = stats.ttest_1samp(returns, 0)
@@ -523,6 +533,7 @@ class EventAnalyzer:
             win_rate=win_rate,
             directional_consistency=directional_consistency,
             signal_strength=signal_strength,
+            sharpe_ratio=sharpe_ratio,
             direction=direction,
             t_stat=t_stat,
             p_value=p_val,
@@ -572,11 +583,12 @@ def plot_correlation_heatmap(
     all_stats : list of KeywordStats across all assets and keywords
     save_path : if provided, save the figure to this path
     """
-    # ── Build matrices for the two panels ──────────────────────────────
+    # ── Build matrices for the three panels ─────────────────────────────
     mean_return_matrix = _build_heatmap_matrix(all_stats, "mean_return") * 100  # → %
     signal_matrix = _build_heatmap_matrix(all_stats, "signal_strength") * 100
+    sharpe_matrix = _build_heatmap_matrix(all_stats, "sharpe_ratio")
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 5.5), gridspec_kw={"wspace": 0.35})
+    fig, axes = plt.subplots(1, 3, figsize=(24, 5.5), gridspec_kw={"wspace": 0.35})
 
     # ── Common style ────────────────────────────────────────────────────
     cmap_diverging = sns.diverging_palette(10, 150, s=90, l=50, as_cmap=True)
@@ -624,6 +636,30 @@ def plot_correlation_heatmap(
     ax2.set_ylabel("Asset", fontsize=11)
     ax2.tick_params(axis="x", rotation=30)
     ax2.tick_params(axis="y", rotation=0)
+
+    # ── Panel 3: Sharpe Ratio (Mean / Std — risk-adjusted signal) ────
+    ax3 = axes[2]
+    vmax_sr = max(abs(sharpe_matrix.values.min()), abs(sharpe_matrix.values.max()))
+    if vmax_sr == 0:
+        vmax_sr = 1.0  # avoid degenerate color range
+    sns.heatmap(
+        sharpe_matrix,
+        annot=True,
+        fmt=".3f",
+        cmap=cmap_diverging,
+        center=0,
+        vmin=-vmax_sr,
+        vmax=vmax_sr,
+        linewidths=0.8,
+        linecolor="white",
+        cbar_kws={"label": "Sharpe Ratio", "shrink": 0.8},
+        ax=ax3,
+    )
+    ax3.set_title("Sharpe Ratio (Mean Ret / Std Dev)", fontsize=12, fontweight="bold", pad=12)
+    ax3.set_xlabel("News Keyword", fontsize=11)
+    ax3.set_ylabel("Asset", fontsize=11)
+    ax3.tick_params(axis="x", rotation=30)
+    ax3.tick_params(axis="y", rotation=0)
 
     # ── Suptitle ────────────────────────────────────────────────────────
     fig.suptitle(
@@ -751,6 +787,7 @@ def main() -> None:
                   f"mean={s.mean_return*100:+.4f}%  "
                   f"consist={s.directional_consistency:.1%}  "
                   f"signal={s.signal_strength*100:+.4f}%  "
+                  f"sharpe={s.sharpe_ratio:+.3f}  "
                   f"p={s.p_value:.4f}")
 
     # ── Step 3: Print Summary Table ─────────────────────────────────────
@@ -768,6 +805,7 @@ def main() -> None:
             "Win Rate": f"{s.win_rate:.1%}",
             "Consistency": f"{s.directional_consistency:.1%}",
             "Signal Str(%)": round(s.signal_strength * 100, 4),
+            "Sharpe Ratio": round(s.sharpe_ratio, 4),
             "t-stat": round(s.t_stat, 3),
             "p-value": round(s.p_value, 4),
             "Sig": "***" if s.p_value < 0.01 else ("**" if s.p_value < 0.05 else ("*" if s.p_value < 0.1 else "")),
