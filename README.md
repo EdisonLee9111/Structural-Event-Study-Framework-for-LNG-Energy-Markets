@@ -2,7 +2,7 @@
 
 **Structural Event Study Framework for Energy Markets & News-Driven Strategies**
 
-> **Ecosystem Integration**: This framework works in tandem with [Global-LNG-Arbitrage-Monitor](https://github.com/EdisonLee9111/Global-LNG-Arbitrage-Monitor). The Arbitrage Monitor identifies real-time cross-regional LNG price dislocations; this framework provides the structural event-study layer to explain **why** those dislocations occur — tracing news events through transmission channels to observable price effects on JKM, TTF, and the Henry Hub spread.
+> **Ecosystem Integration**: This framework works in tandem with [-Global-LNG-Arbitrage-Monitor](https://github.com/EdisonLee9111/-Global-LNG-Arbitrage-Monitor). The Arbitrage Monitor identifies real-time cross-regional LNG price dislocations; this framework provides the structural event-study layer to explain **why** those dislocations occur — tracing news events through transmission channels to observable price effects on JKM, TTF, and the Henry Hub spread.
 
 ---
 
