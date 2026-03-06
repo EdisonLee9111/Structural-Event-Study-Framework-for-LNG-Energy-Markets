@@ -9,7 +9,3 @@ build/
 # Exclude implementation plan and review comments
 implementation_plan.md*
 review_comments.md*
-
-# Exclude auxiliary / co-author files
-.gemini/
-.agents/
