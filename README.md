@@ -61,11 +61,15 @@ Instead of measuring only realized price changes, the framework extracts **forwa
 | **Implied volatility change** | ΔATM vol | Uncertainty resolution vs creation |
 | **Risk reversal** (25Δ) | IV(call) − IV(put) | Tail risk asymmetry (model-free, robust) |
 | **Breeden-Litzenberger density** | Full risk-neutral distribution | Distribution shape change (richer, for visualization) |
-| **Implied convenience yield** | y = r + c − ln(F/S)/T | Market's valuation of inventory — direct tightness proxy |
+| **Implied convenience yield** | y = r + c − ln(F/S)/T | Market's valuation of inventory — directional tightness proxy |
 
 > **Note on RR vs B-L skewness**: In this project's synthetic data (Black-76, controlled strike grid), both measures give consistent results. The distinction becomes critical in real LNG options markets where sparse strikes and wide bid-ask spreads make B-L numerically unstable. RR requires only two vol points; B-L requires the full strike grid.
 
-> **Note on LNG convenience yield**: The standard cost-of-carry decomposition has three LNG-specific caveats: (1) storage cost is not a constant — it depends on terminal utilization, boil-off loss, and ship demurrage; (2) JKM "spot" is actually a 1–2 month forward assessment (Platts DES Japan/Korea); (3) spot-futures spread embeds shipping optionality and geographic basis risk. We use the term **"implied convenience yield"** to acknowledge it as a residual.
+> **Note on LNG implied convenience yield**: The quantity extracted by `y = r + c − ln(F/S)/T` is a **composite residual**, not the textbook convenience yield. It contains at least three unseparated components: (1) the true Kaldor convenience yield (value of holding physical inventory); (2) shipping optionality (the right to divert a cargo between JKM and TTF); (3) geographic basis risk (JKM DES Japan/Korea embeds the Asia-Pacific regional premium). The pseudo-spot problem compounds this: JKM "spot" is a 1–2 month forward assessment (Platts), so `ln(F/S)/T` is a forward-to-forward spread, not a true spot-futures spread.
+>
+> **State-dependent bias**: All three contaminating components amplify in the same direction in tight markets — shipping optionality becomes most valuable when supply is scarce, and the Asian premium widens as buyers compete for marginal cargoes. The residual therefore *overstates* the textbook convenience yield in tight markets and *understates* it in loose markets. The gap between this residual and the true concept is smallest when the market is near equilibrium, and the proxy is most trustworthy precisely when it is least needed.
+>
+> **Usage boundary**: The implied convenience yield is used in this framework as a **directional tightness classifier** (tight / neutral / loose via z-score threshold), not as a cardinal measure of storage value. Coefficient magnitudes on `delta_implied_convenience_yield` in the interaction regression should not be interpreted as structural elasticities across different tightness states: the noise-to-signal ratio of the residual is itself state-dependent, rising in the tight regime where the contaminating components are largest.
 
 ## Falsifiable Predictions
 
@@ -126,6 +130,44 @@ To avoid false discovery inflation (5 keywords × 7 dimensions = 35 hypothesis t
 **Layer 2 — Adjusted individual tests**: Benjamini-Hochberg FDR control (α = 0.05) on dimension-level p-values for keywords that passed Layer 1.
 
 Event count is set to **150** (30 per keyword) to ensure Hotelling T² has adequate power (n/p ≈ 4.3 with 7 response dimensions).
+
+## Identification Assumptions
+
+The framework's ability to separately estimate the liquidity effect, the tightness effect, and the keyword transmission effect rests on three joint assumptions. These are stated explicitly so they can be challenged.
+
+### Assumption 1 — Effective Dimensionality
+
+The 7-dimensional response vector contains correlated components (e.g., spot price change and futures curve level shift are mechanically linked because JKM "spot" is itself a 1–2 month forward assessment). The effective rank of the response matrix is lower than 7, which reduces the power of Hotelling's T² relative to its nominal dimension.
+
+**What we do**: Report the VIF of regression controls and the approximate rank of the response covariance matrix alongside test results. Individual dimensions are only interpreted when Hotelling's T² rejects the joint null.
+
+### Assumption 2 — Separability of Liquidity and Market Tightness
+
+Liquidity (`liquidity_score`: active strikes, bid-ask spread, quote frequency) and market tightness (`market_tightness_score`: storage deviation + backwardation) are not independent in real LNG markets — tight conditions tend to coincide with thinner options markets as market-makers reduce risk appetite. High collinearity between these covariates in the interaction regression would make their individual coefficients unreliable.
+
+**What we do**: In the synthetic data generator, liquidity variation is driven by a fast-moving variable (intraday trading session) while tightness evolves at a slow fundamental frequency (days/weeks). This produces partial decorrelation by construction. The synthetic experiment therefore estimates each effect in a world where the two covariates have *sufficient* independent variation — a controlled assumption that may not hold in real data.
+
+**Scope boundary**: Coefficient estimates from the synthetic experiment represent best-case identification. In real LNG data, the collinearity between liquidity and tightness must be assessed empirically (VIF, pairwise correlation) before the two effects can be reported separately.
+
+### Assumption 3 — Event-Timing Exogeneity
+
+The trading session (which drives liquidity variation) must be independent of keyword type for the identification in Assumption 2 to be valid. In real LNG news flow, this exclusion restriction is likely violated:
+
+- Strike news tends to emerge during European business hours (union negotiations, formal arbitration)
+- Cold snap forecasts follow East Asian meteorological release cycles (JMA, KMA)
+- Planned outage announcements follow company disclosure schedules
+
+If `keyword_type → session_time` holds empirically, then keyword effects, session effects, and liquidity effects form a triangle of confounding that cannot be disentangled without a valid instrument. The synthetic data sidesteps this by assigning event timestamps uniformly across sessions — an assumption of exogenous event timing that real LNG news does not satisfy.
+
+### A First-Order Finding About LNG Market Structure
+
+The three assumptions above together imply a structural constraint that is itself of independent interest:
+
+> **The precision of distributional information available to the analyst is negatively correlated with the magnitude of the price event.** Options markets become sparse (Assumptions 2–3 degrade) precisely during high-stress supply disruptions — when the full 7-dimensional analysis would be most valuable. In the lowest-liquidity regime, the framework degrades toward 2-dimensional analysis (spot + front-month futures) at the cost of losing distributional shape information.
+
+This is not a solvable technical limitation. It is a structural feature of LNG market microstructure that any derivatives-based event study must acknowledge. The risk-reversal measure (`IV_25Δcall − IV_25Δput`) is used for hypothesis testing rather than full B-L density exactly because it is robust to this degradation: it requires only two vol points and remains estimable under partial liquidity.
+
+---
 
 ## Quick Start
 
