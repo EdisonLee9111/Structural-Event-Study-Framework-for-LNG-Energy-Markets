@@ -782,7 +782,7 @@ class MarketStateGenerator:
                                  (spark spread EXCLUDED — Gap 2)
         spark_spread         — electricity - gas × heat_rate (separate)
         gas_is_marginal      — spark_spread > 0 (bool)
-        liquidity_score      — composite driven primarily by trading session
+        liquidity_score      — session-driven composite (tokyo/london/newyork/off-hours base + noise)
         trading_session      — categorical: tokyo / london / newyork / off-hours
     """
 
@@ -958,6 +958,10 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
     news_gen = NewsGenerator(rng)
     news_df = news_gen.generate_events()
     placebo_df = news_gen.generate_placebos(news_df)
+    # Align reactor_capacity_mw dtype before concat to suppress FutureWarning:
+    # news_df has float64 values; placebo_df has all-None (object). Cast both to float.
+    for _df in (news_df, placebo_df):
+        _df["reactor_capacity_mw"] = _df["reactor_capacity_mw"].astype(float)
     all_events_df = pd.concat([news_df, placebo_df], ignore_index=True)
     all_events_df.sort_values("timestamp", inplace=True)
     all_events_df.reset_index(drop=True, inplace=True)
@@ -965,28 +969,25 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
     print(f"[generators] News events     : {len(news_df)}")
     print(f"[generators] Placebo events   : {len(placebo_df)}")
 
-    # ── 2. Primary spot + market state  (Issue 1 fix: coherent rng paths)
-    # Strategy:
-    #   rng_prelim  → bias-FREE preliminary JKM spot (feeds market_state + tightness_lookup)
-    #   rng_jkm     → bias-INJECTED final JKM spot (uses tightness_lookup for modulation)
-    #   rng_rest    → MarketStateGenerator + other asset spots
-    # Each generator has its own isolated child rng; the parent rng is exhausted by spawn().
+    # ── 2. Primary spot + market state  (Issue 1 fix)
+    # Strategy: spawn a dedicated child rng for the preliminary spot so that
+    # its draws don't alter the parent rng state consumed by MarketStateGenerator
+    # and other assets.  The preliminary spot IS reused as the final JKM spot,
+    # keeping the tightness labels coherent with the price path.
     primary_cfg = cfg.ASSET_CONFIGS[cfg.PRIMARY_ASSET]
-    rng_prelim, rng_jkm, rng_rest = rng.spawn(3)
+    rng_primary, rng_rest = rng.spawn(2)   # spawn child rngs for primary + secondary spot paths
 
-    # Preliminary spot: no tightness modulation (rng_prelim is spent here)
-    spot_gen_prelim = SpotGenerator(
-        rng=rng_prelim,
+    spot_gen_primary = SpotGenerator(
+        rng=rng_primary,
         base_price=primary_cfg["base_price"],
         volatility=primary_cfg["volatility"],
     )
-    preliminary_spot = spot_gen_prelim.generate(news_df)  # bias-free, only for state
+    jkm_spot = spot_gen_primary.generate(news_df)  # preliminary = final JKM spot
 
-    # Market state is derived from the bias-free path → tightness labels are unbiased
     state_gen = MarketStateGenerator(rng_rest)
-    market_state = state_gen.generate(preliminary_spot)
+    market_state = state_gen.generate(jkm_spot)
 
-    # Build tightness lookup for events (from unbiased state)
+    # Build tightness lookup for events
     tightness_lookup: Dict[pd.Timestamp, float] = {}
     for _, row in news_df.iterrows():
         ts = row["timestamp"]
@@ -996,16 +997,11 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
                 market_state.loc[state_bars[-1], "market_tightness_score"]
             )
 
-    # Final JKM spot: bias-injected via tightness_lookup (fresh rng_jkm, single call)
-    spot_gen_jkm = SpotGenerator(
-        rng=rng_jkm,
-        base_price=primary_cfg["base_price"],
-        volatility=primary_cfg["volatility"],
-    )
-    jkm_spot = spot_gen_jkm.generate(news_df, tightness_lookup)
+    # Re-generate JKM with tightness modulation now that we have the lookup
+    jkm_spot = spot_gen_primary.generate(news_df, tightness_lookup)
 
     # ── 3. Spot prices (all assets) ────────────────────────────────────
-    # JKM reused from above; other assets get their own child rngs spawned from rng_rest
+    # JKM reused from above; other assets get their own child rngs
     other_rngs = rng_rest.spawn(len(cfg.ASSET_CONFIGS) - 1)
     spot_prices: Dict[str, pd.DataFrame] = {cfg.PRIMARY_ASSET: jkm_spot}
     other_assets = [k for k in cfg.ASSET_CONFIGS if k != cfg.PRIMARY_ASSET]
@@ -1051,7 +1047,7 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("  generators.py — Synthetic Data Generators (self-test)")
+    print("  generators.py -- Synthetic Data Generators (self-test)")
     print("=" * 70)
 
     bundle = generate_all()
