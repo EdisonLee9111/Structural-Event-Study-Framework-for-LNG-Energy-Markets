@@ -172,7 +172,10 @@ TIGHTNESS_LOOSE_THRESHOLD: float   = -0.50   # z < -0.5  → "loose"
 # Spark spread: proxy for whether gas is the marginal fuel
 # spark_spread = electricity_price − gas_price × HEAT_RATE
 HEAT_RATE: float = 7.0               # MMBtu/MWh (CCGT efficiency)
-ELECTRICITY_BASE_PRICE: float = 90.0 # JPY/kWh proxy (stylised)
+ELECTRICITY_BASE_PRICE: float = 120.0 # JPY/kWh proxy (stylised)
+# Raised from 90 → 120 so that spark_spread = elec − JKM×HEAT_RATE ≈ 120-105 = +15
+# near the long-run mean, giving a balanced gas_is_marginal True/False split
+# required for Prediction 3 test (Issue 7 fix).
 
 # Electricity price volatility (for spark spread simulation)
 ELECTRICITY_VOLATILITY: float = 0.0008  # per-bar
