@@ -13,4 +13,5 @@ review_comments.md*
 # Auxiliary and output files
 .claude/
 main_run.log
-outputs/
+outputs/*
+!outputs/*.png
