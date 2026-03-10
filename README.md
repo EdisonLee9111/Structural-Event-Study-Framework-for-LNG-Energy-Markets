@@ -121,6 +121,26 @@ If gas is out of the merit order, the Nuclear Restart transmission channel is **
 | `tests/test_analytics.py` | Correctness: no-arbitrage, put-call parity, B-L recovery, convenience yield sensitivity (80% vs 95% utilization) |
 | `tests/test_falsification.py` | Predictions 0–3 as formal statistical tests |
 
+### Ecosystem Interface
+
+This framework and the [Arbitrage Monitor](https://github.com/EdisonLee9111/-Global-LNG-Arbitrage-Monitor) are two layers of a unified LNG trading system. The data contract linking them is straightforward:
+
+```text
+Arbitrage Monitor                    Event Study Framework
+┌─────────────────┐                 ┌────────────────────────────┐
+│ netback spread  │──── input ───▶  │ market_tightness_score    │
+│ shipping routes │                 │                            │
+│ sentiment signal│──── input ───▶  │ news event trigger        │
+└─────────────────┘                 └────────────────────────────┘
+                                               │
+                                      structural diagnosis:
+                                     WHY the spread exists
+```
+
+- **Monitor Outputs**: Real-time netback spreads, shipping route frictions, and NLP sentiment signals.
+- **Framework Consumes**: Spread magnitude maps to `market_tightness_score` (market state), and sentiment flags act as the `trigger` for the event study (the shock).
+- **Mapping Logic**: The Monitor discovers *that* a price dislocation or arbitrage window has opened. This Framework takes those inputs and provides a structural diagnosis of *why* the spread exists by tracing the transmission channel.
+
 ## Statistical Testing Framework
 
 To avoid false discovery inflation (5 keywords × 7 dimensions = 35 hypothesis tests), we use a two-layer approach:
