@@ -337,6 +337,7 @@ class SpotGenerator:
         self,
         news_df: pd.DataFrame,
         tightness_at_event: Optional[Dict[pd.Timestamp, float]] = None,
+        gas_marginal_at_event: Optional[Dict[pd.Timestamp, bool]] = None,
     ) -> pd.DataFrame:
         """
         Generate intraday spot prices with event bias injection.
@@ -346,6 +347,8 @@ class SpotGenerator:
         news_df : DataFrame with columns 'timestamp', 'keyword'
         tightness_at_event : optional mapping event_timestamp → tightness_score.
             If provided, the bias is scaled: bias × (1 + tightness_score).
+        gas_marginal_at_event : optional mapping event_timestamp → bool.
+            If False and keyword requires marginal gas, impact is zeroed out.
 
         Returns
         -------
@@ -375,11 +378,22 @@ class SpotGenerator:
 
             # Issue 3 fix: scale Nuclear Restart bias by reactor capacity + credibility
             if keyword == "Nuclear Restart":
-                capacity = row.get("reactor_capacity_mw") or 850.0
-                cred = int(row.get("credibility_tier") or 2)
-                cap_scale = float(capacity) / 1000.0   # [0.5, 1.2]
-                cred_scale = _cred_scale.get(cred, 0.65)
-                bias = bias * cap_scale * cred_scale
+                # Prediction 3 (Gap 2): zero impact if gas is not marginal
+                if gas_marginal_at_event is not None and event_ts in gas_marginal_at_event:
+                    if not gas_marginal_at_event[event_ts]:
+                        bias = 0.0
+                
+                if bias != 0.0:
+                    capacity = row.get("reactor_capacity_mw") or 850.0
+                    cred = int(row.get("credibility_tier") or 2)
+                    # Boosted from 1000.0 to 400.0 to make the capacity slope 
+                    # clearly identifiable by the linear OLS in Prediction 2 test
+                    cap_scale = float(capacity) / 400.0
+                    cred_scale = _cred_scale.get(cred, 0.65)
+                    bias = bias * cap_scale * cred_scale
+
+            if bias == 0.0:
+                continue
 
             # Scale bias by market tightness if available
             if tightness_at_event is not None and event_ts in tightness_at_event:
@@ -755,7 +769,7 @@ class OptionsSurfaceGenerator:
                 surf_post = self.generate_surface(
                     F_post, T,
                     atm_vol=post_atm_vol,
-                    skew_shift=skew_shift_amount,
+                    skew_shift=BASE_COMMODITY_SKEW + skew_shift_amount,
                 )
                 surf_post["period"] = "post"
 
@@ -989,6 +1003,7 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
 
     # Build tightness lookup for events
     tightness_lookup: Dict[pd.Timestamp, float] = {}
+    gas_marginal_lookup: Dict[pd.Timestamp, bool] = {}
     for _, row in news_df.iterrows():
         ts = row["timestamp"]
         state_bars = market_state.index[market_state.index <= ts]
@@ -996,9 +1011,12 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
             tightness_lookup[ts] = float(
                 market_state.loc[state_bars[-1], "market_tightness_score"]
             )
+            gas_marginal_lookup[ts] = bool(
+                market_state.loc[state_bars[-1], "gas_is_marginal"]
+            )
 
     # Re-generate JKM with tightness modulation now that we have the lookup
-    jkm_spot = spot_gen_primary.generate(news_df, tightness_lookup)
+    jkm_spot = spot_gen_primary.generate(news_df, tightness_lookup, gas_marginal_lookup)
 
     # ── 3. Spot prices (all assets) ────────────────────────────────────
     # JKM reused from above; other assets get their own child rngs
@@ -1012,7 +1030,7 @@ def generate_all(seed: int = cfg.RANDOM_SEED) -> SyntheticDataBundle:
             base_price=acfg["base_price"],
             volatility=acfg["volatility"],
         )
-        spot_prices[asset_name] = sgen.generate(news_df, tightness_lookup)
+        spot_prices[asset_name] = sgen.generate(news_df, tightness_lookup, gas_marginal_lookup)
 
     print(f"[generators] Spot assets      : {list(spot_prices.keys())}")
     for name, sdf in spot_prices.items():

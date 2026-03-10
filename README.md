@@ -180,10 +180,26 @@ python main.py
 
 - Console: structural summary table with raw and BH-adjusted p-values
 - Console: Prediction 0–3 pass/fail results
-- `heatmap_structural.png` — Conditional signal surface (tight vs loose market)
-- `curve_shifts.png` — Futures curve deformation per keyword
-- `implied_density.png` — Pre/post risk-neutral distributions (B-L)
-- `decomposition.png` — Level/slope/curvature bar chart
+
+### Conditional Signal Surface
+![Conditional signal surface (tight vs loose market)](outputs/conditional_signal_surface.png)
+*Heatmap showing how signal strength changes depending on market state.*
+
+### Futures Curve Shift
+![Futures curve deformation per keyword](outputs/futures_curve_shifts.png)
+*Pre vs post event curves overlaid per keyword, showing term structure deformation.*
+
+### Implied Density Changes
+![Pre/post risk-neutral distributions](outputs/implied_density_comparison.png)
+*Changes in risk-neutral distributions extracted via Breeden-Litzenberger.*
+
+### Curve Shift Decomposition
+![Level/slope/curvature bar chart](outputs/level_slope_curvature.png)
+*Decomposition of curve shifts into level, slope, and curvature components.*
+
+### Unconditional vs Conditional Comparison
+![Unconditional vs Conditional Comparison](outputs/unconditional_vs_conditional.png)
+*Demonstrating what averaging hides across market states.*
 
 ## Tech Stack
 

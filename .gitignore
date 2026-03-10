@@ -9,3 +9,8 @@ build/
 # Exclude implementation plan and review comments
 implementation_plan.md*
 review_comments.md*
+
+# Auxiliary and output files
+.claude/
+main_run.log
+outputs/
