@@ -246,3 +246,7 @@ python main.py
 - Kolari & Pynnönen (2010)「Event Study Testing with Cross-sectional Correlation of Abnormal Returns」『Review of Financial Studies』: 3996-4025.
 - Breeden & Litzenberger (1978)「Prices of State-Contingent Claims Implicit in Option Prices」『Journal of Business』: 621-651.
 - Working (1949)「The Theory of Price of Storage」『American Economic Review』: 1254-1262.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
